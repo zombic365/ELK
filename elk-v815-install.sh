@@ -14,5 +14,7 @@ if [ -d ${ELK_PATH} ]; then
                 tar -zxf ./${_pkg}-8.15.2-linux-x86_64.tar.gz -C ${ELK_PATH}/.
                 cd ${ELK_PATH}
                 ln -s ${_pkg}-8.15.2 ${_pkg}
+            fi
         done
+    fi
 fi
