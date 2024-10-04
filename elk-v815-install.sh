@@ -28,13 +28,15 @@ if [ ! -f ${PKG_PATH}/${SVC_NAME}-instances.yml ]; then
     cat <<EOF >${PKG_PATH}/${SVC_NAME}-instances.yml
 instances:
 - name: ${SVC_NAME}
-    dns: [ '${SVC_NAME}' ]
-    EOF
+    dns: [ '${SVC_NAME}', '${SVC_NAME}.local' ]
+EOF
 fi
 
-${ELK_PATH}/elasticsearch/bin/elasticsearch-certutil \
-cert \
---keep-ca-key \
---pem \
---in ${PKG_PATH}/${SVC_NAME}-instances.yml \
---out ${PKG_PATH}/${SVC_NAME}-certs.zip
+if [ ! -f ${PKG_PATH}/${SVC_NAME}-certs.zip ]; then
+    ${ELK_PATH}/elasticsearch/bin/elasticsearch-certutil \
+    cert \
+    --keep-ca-key \
+    --pem \
+    --in ${PKG_PATH}/${SVC_NAME}-instances.yml \
+    --out ${PKG_PATH}/${SVC_NAME}-certs.zip
+fi
