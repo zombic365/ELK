@@ -255,7 +255,7 @@ function setup_config() {
 
     if [[ -f ${ELK_PATH}/${_SVC}/config/${_SVC}.yml ]] && [[ -f ${ELK_PATH}/${_SVC}/config/${_SVC}.yml.org ]]; then
         while true; do
-            read -p "exisit file ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances.zip.
+            read -p "exisit file ${ELK_PATH}/${_SVC}/config/${_SVC}.yml.
 U wnat to re-create? (y/N) " _ANSWER
             case ${_ANSWER} in
                 [Yy] | [Yy][Ee][Ss] ) _RE="true" ; break                    ;;
@@ -272,7 +272,9 @@ U wnat to re-create? (y/N) " _ANSWER
 
     run_cmd "cp ${ELK_PATH}/${_SVC}/config/${_SVC}.yml ${ELK_PATH}/${_SVC}/config/${_SVC}.yml.org"
 
-    run_cmd "cat <<EOF >${ELK_PATH}/elasticsearch/config/elasticsearch.yml
+    case ${_SVC} in
+        elasticserach )
+            run_cmd "cat <<EOF >${ELK_PATH}/elasticsearch/config/elasticsearch.yml
 cluster.name: ${ELK_SVR}
 node.name: ${ELK_SVR}
 path.data: ${ELK_PATH}/elasticsearch/data
@@ -292,10 +294,143 @@ xpack.security.http.ssl.key: certs/instances/instances.key
 xpack.security.http.ssl.certificate: certs/instances/instances.crt
 xpack.security.http.ssl.certificate_authorities: certs/ca/ca.crt
 EOF"
+        ;;
+        kibana )
+            _KIBANA_PASSWORD=$(awk -F'=' '/kibana_system =/ {print $2}' ${ELK_PATH}/elasticsearch/config/${ELK_SVR}_pass.temp |tr -d ' ')
+            run_cmd "cat <<EOF >${ELK_PATH}/kibana/config/kibana.yml
+server.name: ${ELK_SVR}
+server.host: 0.0.0.0
+server.port: 5601
+
+path.data: ${ELK_PATH}/kibana/data
+pid.file: ${ELK_PATH}/kibana/data/kibana.pid
+
+logging.root.level: info
+logging.appenders.default:
+    type: file
+    fileName: ${ELK_PATH}/kibana/logs/kibana.log
+    layout:
+        type: json
+
+server.ssl.enabled: true
+server.ssl.certificate: ${ELK_PATH}/kibana/config/certs/instances/instances.crt
+server.ssl.key: ${ELK_PATH}/kibana/config/certs/instances/instances.key
+
+elasticsearch.hosts: https://${ELK_URL}:9200
+elasticsearch.username: kibana_system
+elasticsearch.password: ${_KIBANA_PASSWORD}
+elasticsearch.ssl.certificateAuthorities: ${ELK_PATH}/kibana/config/certs/ca/ca.crt
+EOF"
+    ;;
+
+        logstash )
+            ELASTIC_PASSWORD=$(awk -F'=' '/elastic =/ {print $2}' ${ELK_PATH}/elasticsearch/config/${ELK_SVR}_pass.temp |tr -d ' ')
+            if [ ! -d ${ELK_PATH}/logstash/conf.d ]; then
+                run_cmd "mkdir ${ELK_PATH}/logstash/conf.d"
+            fi
+            
+            run_cmd "cat <<EOF >${ELK_PATH}/logstash/config/logstash.yml
+node.name: ${ELK_SVR}
+path.config: ${ELK_PATH}/logstash/conf.d/*.conf
+path.data: ${ELK_PATH}/logstash/data
+path.logs: ${ELK_PATH}/logstash/logs
+
+xpack.monitoring.enabled: true
+xpack.monitoring.elasticsearch.username: elastic
+xpack.monitoring.elasticsearch.password: ${ELASTIC_PASSWORD}
+xpack.monitoring.elasticsearch.hosts: https://${SVC_NAME}:9200
+
+xpack.monitoring.elasticsearch.ssl.certificate_authority: ${ELK_PATH}/logstash/config/certs/ca/ca.crt
+xpack.monitoring.elasticsearch.ssl.verification_mode: certificate
+xpack.monitoring.elasticsearch.sniffing: false
+xpack.monitoring.collection.interval: 10s
+xpack.monitoring.collection.pipeline.details.enabled: true
+EOF"
+           if [ ! -f ${ELK_PATH}/logstash/conf.d/basic-logstash.conf ]; then
+                run_cmd "cat <<EOF >${ELK_PATH}/logstash/conf.d/basic-logstash.conf
+input {
+    file {
+        path            => \"/var/log/secure\"
+        start_position  => beginning
+    }
+}
+
+output {
+    elasticsearch {
+        index       => \"logstash-%{+YYYY.MM.dd}\"
+        hosts       => https://${SVC_NAME}:9200
+        ssl         => true
+        cacert      => \"${ELK_PATH}/logstash/config/certs/ca/ca.crt\"
+        user        => \"elastic\"
+        password    => \"${ELASTIC_PASSWORD}\"
+    }
+}
+EOF"
+    ;;
+    esac
 }
 
 function setup_service() {
-    
+    _RE="false"
+    _SVC=$1
+    if [ -z ${_SVC} ]; then
+        log_msg "ERROR" "no arguments [set_config]."
+        exit 1
+    fi
+
+    if [ -f /usr/lib/systemd/system/${_SVC}.service ]; then
+        while true; do
+            read -p "/usr/lib/systemd/system/${_SVC}.service.
+U wnat to re-create? (y/N) " _ANSWER
+            case ${_ANSWER} in
+                [Yy] | [Yy][Ee][Ss] ) _RE="true" ; break                    ;;
+                [Nn] | [Nn][Oo]     ) log_msg "INFO" "Script stop" ; exit 0 ;;
+                *                   ) log_msg "WARR" "input Y or N"         ;;
+            esac
+        done
+    fi
+
+    if [ ${_RE} == "true" ]; then
+        run_cmd "cp -rfp /usr/lib/systemd/system/${_SVC}.service /usr/lib/systemd/system/${_SVC}.service.org"
+        run_cmd "rm -f /usr/lib/systemd/system/${_SVC}.service"
+    fi
+
+    run_cmd "cp -rfp ./${_SVC}.service.sample ./${_SVC}.service"
+    run_cmd "sed -i \"s~ELK_PATH~${ELK_PATH}~g\" ./${_SVC}.service"
+    run_cmd "sed -i \"s~ELK_USER~${ELK_USER}~g\" ./${_SVC}.service"
+    run_cmd "cp -rfp ./${_SVC}.service /usr/lib/systemd/system/${_SVC}.service"
+    run_cmd "systemctl daemon-reload"
+
+    run_cmd "chown -R ${ELK_USER}.${ELK_USER} ${ELK_PATH}"
+}
+
+function setup_password() {
+    _RE="false"
+
+    if [ -f ${ELK_PATH}/elasticsearch/config/elk_pass.temp ]; then
+        while true; do
+            read -p "exisit file ${ELK_PATH}/elasticsearch/config/elk_pass.temp.
+U wnat to re-create? (y/N) " _ANSWER
+            case ${_ANSWER} in
+                [Yy] | [Yy][Ee][Ss] ) _RE="true" ; break                    ;;
+                [Nn] | [Nn][Oo]     ) log_msg "INFO" "Script stop" ; exit 0 ;;
+                *                   ) log_msg "WARR" "input Y or N"         ;;
+            esac
+        done
+    fi
+
+    if [ ${_RE} == "true" ]; then
+        run_cmd "cp -rfp ${ELK_PATH}/elasticsearch/config/elk_pass.temp ${ELK_PATH}/elasticsearch/config/elk_pass.temp.org"
+        run_cmd "rm -f ${ELK_PATH}/elasticsearch/config/elk_pass.temp"
+    fi
+
+    run_cmd "su - ${ELK_USER} -c 'yes| ${ELK_PATH}/elasticsearch/bin/elasticsearch-setup-passwords auto -u \"https://${ELK_URL}:9200\" >${ELK_PATH}/elasticsearch/config/elk_pass.temp'"
+    if [ $? -eq 0 ]; then
+        log_msg "INO" "Sucess elk password."
+    else
+        log_msg "ERROR" "Fail auto password. Because Already been excuted once 'elasticsearch-auto-passwords auto'.\nPlease using elasticsearch-reset-password' or Delete Elasticsearch data."
+        exit 1
+    fi
 }
 
 main() {
@@ -312,10 +447,13 @@ main() {
                 # download_pkgs
                 # setup_ssl_root
                 # setup_ssl_instance
-                setup_config "elasticsearch"
-                setup_service "elasticsearch"
-                # setup_config "logstash"
+                # setup_config "elasticsearch"
+                # setup_service "elasticsearch"
+                # setup_password
                 # setup_config "kibana"
+                # setup_service "kibana"
+                setup_config "logstash"
+                setup_service "logstash"
             ;;
             "remove"  ) echo "remote"  ; exit 0 ;;
             *         ) help_usage     ; exit 0 ;;
