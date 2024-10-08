@@ -33,13 +33,13 @@ function log_msg() {
 
     # printf "%-*s | %s\n" ${STR_LEGNTH} "Server Serial" "Unknown" |tee -a ${LOG_FILE} >/dev/null
     case ${_LOG_TYPE} in
-        "CMD"   ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
-        "OK"    ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "command ok."   ;;
-        "FAIL"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "command fail." ;;
-        "INFO"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
-        "WARR"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
-        "SKIP"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
-        "ERROR" ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
+        "CMD"   ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
+        "OK"    ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "command ok."   ;;
+        "FAIL"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "command fail." ;;
+        "INFO"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
+        "WARR"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
+        "SKIP"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
+        "ERROR" ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
         # "CMD"   ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "${_LOG_MSG}"   |tee -a ${LOG_FILE} >/dev/null ;;
         # "OK"    ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "command ok."   |tee -a ${LOG_FILE} >/dev/null ;;
         # "FAIL"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "command fail." |tee -a ${LOG_FILE} >/dev/null ;;
@@ -57,6 +57,7 @@ Options:
 -r, --remove              : Remove  ELK
 -u, --user [ STRING ]     : ELK User
 -s, --svr  [ STRING ]     : ELK Service name
+--svr-url  [ STRING ]     : ELK Service URL (Ex: elk.localhost.com)
 -p, --path [ STRING ]     : ELK Path
 -v, --ver  [  INT   ]     : ELK Version
 EOF
@@ -65,7 +66,7 @@ EOF
 
 function set_opts() {
     arguments=$(getopt --options u:s:p:v:hir \
-    --longoptions user:,svr:,path:,ver:,help,install,remove \
+    --longoptions user:,svr:,svr-url:,path:,ver:,help,install,remove \
     --name $(basename $0) \
     -- "$@")
 
@@ -76,6 +77,7 @@ function set_opts() {
             -r | --remove   ) MODE="remove" ; shift   ;;
             -u | --user     ) ELK_USER=$2   ; shift 2 ;;
             -s | --svr      ) ELK_SVR=$2    ; shift 2 ;;
+            --svr-url       ) ELK_URL=$2    ; shift 2 ;;
             -p | --path     ) ELK_PATH=$2   ; shift 2 ;;
             -v | --ver      ) ELK_VER=$2    ; shift 2 ;;
             -h | --help     ) help_usage              ;;            
@@ -87,34 +89,55 @@ function set_opts() {
     shift $((OPTIND-1))
 }
 
-function setup_config() {
+function setup_dir() {
     if [ ! -d ${ELK_PATH}/tools/pkgs ]; then
         run_cmd "mkdir -p ${ELK_PATH}/tools/pkgs"
     fi
 }
 
 function download_pkgs() {
+    _RE="false"
+
     for _SVC in elasticsearch logstash kibana; do
+        if [[ -f ${ELK_PATH}/tools/pkgs/${_SVC}-${ELK_VER}-linux-x86_64.tar.gz ]] && [[ ${ELK_PATH}/tools/pkgs/${_SVC}-${ELK_VER}-linux-x86_64.tar.gz.sha512 ]]; then
+            while true; do
+                read -p "exisit file ${_SVC}-${ELK_VER}-linux-x86_64.tar.gz.
+U wnat to re-create? (y/N) " _ANSWER
+                case ${_ANSWER} in
+                    [Yy] | [Yy][Ee][Ss] ) _RE="true" ; break                    ;;
+                    [Nn] | [Nn][Oo]     ) log_msg "INFO" "Script stop" ; exit 0 ;;
+                    *                   ) log_msg "WARR" "input Y or N"         ;;
+                esac
+            done
+        fi
+
+        if [ ${_RE} == "true" ]; then
+            run_cmd "cp -rfp ${ELK_PATH}/tools/pkgs/${_SVC}-${ELK_VER}-linux-x86_64.tar.gz ${ELK_PATH}/tools/pkgs/${_SVC}-${ELK_VER}-linux-x86_64.tar.gz.org"
+            run_cmd "cp -rfp ${ELK_PATH}/tools/pkgs/${_SVC}-${ELK_VER}-linux-x86_64.tar.gz.sha512 ${ELK_PATH}/tools/pkgs/${_SVC}-${ELK_VER}-linux-x86_64.tar.gz.sha512.org"
+            run_cmd "rm -f ${ELK_PATH}/tools/pkgs/${_SVC}-${ELK_VER}-linux-x86_64.tar.gz ${ELK_PATH}/tools/pkgs/${_SVC}-${ELK_VER}-linux-x86_64.tar.gz.sha512"
+        fi
+
         run_cmd "curl -s https://artifacts.elastic.co/downloads/${_SVC}/${_SVC}-${ELK_VER}-linux-x86_64.tar.gz >${ELK_PATH}/tools/pkgs/${_SVC}-${ELK_VER}-linux-x86_64.tar.gz"
         run_cmd "curl -s https://artifacts.elastic.co/downloads/${_SVC}/${_SVC}-${ELK_VER}-linux-x86_64.tar.gz.sha512 >${ELK_PATH}/tools/pkgs/${_SVC}-${ELK_VER}-linux-x86_64.tar.gz.sha512"
         run_cmd "cd ${ELK_PATH}/tools/pkgs"
+
         run_cmd "shasum -a 512 -qc ${_SVC}-${ELK_VER}-linux-x86_64.tar.gz.sha512"
         if [ $? -eq 0 ]; then
-            if [ ! -d ${ELK_PATH}/${_SVC}-${ELK_VER}-linux-x86_64 ]; then
+            if [ ! -d ${ELK_PATH}/${_SVC}-${ELK_VER} ]; then
                 run_cmd "tar -zxf ${_SVC}-${ELK_VER}-linux-x86_64.tar.gz -C ${ELK_PATH}/."
                 run_cmd "cd ${ELK_PATH}"
             else
-                log_msg "SKIP" "Already install ${ELK_PATH}/${_SVC}-${ELK_VER}-linux-x86_64"
+                log_msg "SKIP" "Already install ${ELK_PATH}/${_SVC}-${ELK_VER}"
                 continue
             fi
 
             if [ ! -f ${ELK_PATH}/${_SVC} ]; then
-                run_cmd "ln -s ${ELK_PATH}/${_SVC} ${_SVC}"
+                run_cmd "ln -s ${ELK_PATH}/${_SVC}-${ELK_VER} ${_SVC}"
             else
-                log_msg "WARR" "Already ${ELK_PATH}/${_SVC}, so Change new [ ${_SVC}-${ELK_VER}-linux-x86_64 ]"
-                run_cmd "ln -Tfs ${ELK_PATH}/${_SVC} ${_SVC}"
+                log_msg "WARR" "Already ${ELK_PATH}/${_SVC}, so Change new [ ${_SVC}-${ELK_VER} ]"
+                run_cmd "ln -Tfs ${ELK_PATH}/${_SVC}-${ELK_VER} ${_SVC}"
             fi
-
+    
             log_msg "INFO" "Sucess Install ${_SVC}"
         else
             log_msg "ERROR" "Download error ${_SVC}-${ELK_VER}"
@@ -123,7 +146,157 @@ function download_pkgs() {
     done
 }
 
-function setup_ssl_els
+function setup_ssl_root() {
+    _RE="false"
+
+    if [ -f ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root.zip ]; then
+        while true; do
+            read -p "exisit file ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root.zip.
+U wnat to re-create? (y/N) " _ANSWER
+            case ${_ANSWER} in
+                [Yy] | [Yy][Ee][Ss] ) _RE="true" ; break                    ;;
+                [Nn] | [Nn][Oo]     ) log_msg "INFO" "Script stop" ; exit 0 ;;
+                *                   ) log_msg "WARR" "input Y or N"         ;;
+            esac
+        done
+    fi
+
+    if [ ${_RE} == "true" ]; then
+        run_cmd "cp -rfp ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root.zip ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root.zip.org"
+        run_cmd "rm -f ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root.zip"
+        
+        if [ -d ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root ]; then
+            run_cmd "cp -rfp ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root.org"
+            run_cmd "rm -rf ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root"
+        fi
+
+        for _SVC in elasticsearch logstash kibana; do
+            if [ -d ${ELK_PATH}/${_SVC}/config/certs ]; then
+                run_cmd "cp -rfp ${ELK_PATH}/${_SVC}/config/certs ${ELK_PATH}/${_SVC}/config/certs.org"
+                run_cmd "rm -rf ${ELK_PATH}/${_SVC}/config/certs"
+            fi
+        done
+    fi
+
+    for _SVC in elasticsearch logstash kibana; do
+        if [ ! -d ${ELK_PATH}/${_SVC}/config/certs ]; then
+            run_cmd "mkdir ${ELK_PATH}/${_SVC}/config/certs"
+        fi
+    done
+
+    run_cmd "${ELK_PATH}/elasticsearch/bin/elasticsearch-certutil ca --silent --pem --days 365 --pass \"\" --out ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root.zip"
+    if [ $? -eq 0 ]; then
+        run_cmd "unzip -d ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root.zip"
+        for _SVC in elasticsearch logstash kibana; do
+            run_cmd "cp -rfp ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root/* ${ELK_PATH}/${_SVC}/config/certs/."
+        done
+    else
+        log_msg "ERROR" "Create fail root-ca."
+        exit 1
+    fi
+
+    if [ -f ${ELK_PATH}/tools/pkgs/${ELK_SVR}-instances.yml ]; then
+        if [ ${_RE} == "true" ]; then
+            run_cmd "cp -rfp ${ELK_PATH}/tools/pkgs/${ELK_SVR}-instances.yml ${ELK_PATH}/tools/pkgs/${ELK_SVR}-instances.yml.org"
+            run_cmd "rm -f ${ELK_PATH}/tools/pkgs/${ELK_SVR}-instances.yml"
+        fi
+    fi
+    run_cmd "cat <<EOF >${ELK_PATH}/tools/pkgs/${ELK_SVR}-instances.yml
+instances:
+    - name: 'instances'
+      dns: [ '${ELK_SVR}', '${ELK_URL}' ]
+EOF"
+}
+
+function setup_ssl_instance() {
+    _RE="false"
+
+    if [ -f ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances.zip ]; then
+        while true; do
+            read -p "exisit file ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances.zip.
+U wnat to re-create? (y/N) " _ANSWER
+            case ${_ANSWER} in
+                [Yy] | [Yy][Ee][Ss] ) _RE="true" ; break                    ;;
+                [Nn] | [Nn][Oo]     ) log_msg "INFO" "Script stop" ; exit 0 ;;
+                *                   ) log_msg "WARR" "input Y or N"         ;;
+            esac
+        done
+    fi
+
+    if [ ${_RE} == "true" ]; then
+        run_cmd "cp -rfp ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances.zip ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances.zip.org"
+        run_cmd "rm -f ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances.zip"
+        
+        if [ -d ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances ]; then
+            run_cmd "cp -rfp ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances.org"
+            run_cmd "rm -rf ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances"
+        fi
+    fi
+
+    run_cmd "${ELK_PATH}/elasticsearch/bin/elasticsearch-certutil cert --silent --pem --ca-cert ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root/ca/ca.crt --ca-key ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-root/ca/ca.key --in ${ELK_PATH}/tools/pkgs/${ELK_SVR}-instances.yml --out ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances.zip"
+    if [ $? -eq 0 ]; then
+        run_cmd "unzip -d ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances.zip"
+        for _SVC in elasticsearch logstash kibana; do        
+            run_cmd "cp -rfp ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances/* ${ELK_PATH}/${_SVC}/config/certs/."
+        done
+    else
+        log_msg "ERROR" "Create fail instance-ca."
+        exit 1
+    fi
+}
+
+function setup_config() {
+    _RE="false"
+    _SVC=$1
+    if [ -z ${_SVC} ]; then
+        log_msg "ERROR" "no arguments [set_config]."
+        exit 1
+    fi
+
+    if [[ -f ${ELK_PATH}/${_SVC}/config/${_SVC}.yml ]] && [[ -f ${ELK_PATH}/${_SVC}/config/${_SVC}.yml.org ]]; then
+        while true; do
+            read -p "exisit file ${ELK_PATH}/tools/pkgs/${ELK_SVR}-certs-instances.zip.
+U wnat to re-create? (y/N) " _ANSWER
+            case ${_ANSWER} in
+                [Yy] | [Yy][Ee][Ss] ) _RE="true" ; break                    ;;
+                [Nn] | [Nn][Oo]     ) log_msg "INFO" "Script stop" ; exit 0 ;;
+                *                   ) log_msg "WARR" "input Y or N"         ;;
+            esac
+        done
+    fi
+
+    if [ ${_RE} == "true" ]; then
+        run_cmd "cp -rfp ${ELK_PATH}/${_SVC}/config/${_SVC}.yml ${ELK_PATH}/${_SVC}/config/${_SVC}.yml.org"
+        run_cmd "rm -f ${ELK_PATH}/${_SVC}/config/${_SVC}.yml"
+    fi
+
+    run_cmd "cp ${ELK_PATH}/${_SVC}/config/${_SVC}.yml ${ELK_PATH}/${_SVC}/config/${_SVC}.yml.org"
+
+    run_cmd "cat <<EOF >${ELK_PATH}/elasticsearch/config/elasticsearch.yml
+cluster.name: ${ELK_SVR}
+node.name: ${ELK_SVR}
+path.data: ${ELK_PATH}/elasticsearch/data
+path.logs: ${ELK_PATH}/elasticsearch/logs
+network.host: 0.0.0.0
+http.port: 9200
+discovery.type: single-node
+
+xpack.security.transport.ssl.enabled: true
+xpack.security.transport.ssl.verification_mode: certificate
+xpack.security.transport.ssl.key: certs/instances/instances.key
+xpack.security.transport.ssl.certificate: certs/instances/instances.crt
+xpack.security.transport.ssl.certificate_authorities: certs/ca/ca.crt
+
+xpack.security.http.ssl.enabled: true
+xpack.security.http.ssl.key: certs/instances/instances.key
+xpack.security.http.ssl.certificate: certs/instances/instances.crt
+xpack.security.http.ssl.certificate_authorities: certs/ca/ca.crt
+EOF"
+}
+
+function setup_service() {
+    
+}
 
 main() {
     [ $# -eq 0 ] && help_usage
@@ -132,11 +305,17 @@ main() {
     if [ ! -d ${ELK_PATH} ]; then
         log_msg "ERROR" "Pleaase check path ${ELK_PATH}"
         exit 1
-    else    
-        setup_config
+    else
         case ${MODE} in
             "install" )
-                download_pkgs
+                setup_dir
+                # download_pkgs
+                # setup_ssl_root
+                # setup_ssl_instance
+                setup_config "elasticsearch"
+                setup_service "elasticsearch"
+                # setup_config "logstash"
+                # setup_config "kibana"
             ;;
             "remove"  ) echo "remote"  ; exit 0 ;;
             *         ) help_usage     ; exit 0 ;;
@@ -144,5 +323,3 @@ main() {
     fi
 }
 main $*
-
-
