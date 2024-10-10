@@ -4,14 +4,12 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-Type=notify
+Type=simple
 ExecStart=ELK_PATH/logstash/bin/logstash
+Restart=always
 
 User=ELK_USER
 Group=ELK_USER
-
-Type=simple
-Restart=always
 
 StandardOutput=journal
 StandardError=inherit

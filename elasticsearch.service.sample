@@ -4,15 +4,13 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-Type=notify
+Type=simple
 ExecStart=ELK_PATH/elasticsearch/bin/elasticsearch
 PIDFile=ELK_PATH/elasticsearch/run/elasticsearch.pid
+Restart=always
 
 User=ELK_USER
 Group=ELK_USER
-
-Type=simple
-Restart=always
 
 StandardOutput=journal
 StandardError=inherit

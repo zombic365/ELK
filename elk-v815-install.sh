@@ -1,5 +1,5 @@
-# create by zombic365
 #!/bin/bash
+# create by zombic365
 
 # 참조 blog
 # https://velog.io/@mnetna/X-PACK-%EC%8B%9C%ED%81%90%EB%A6%AC%ED%8B%B0-%EB%AC%B4%EB%A3%8C-%EA%B8%B0%EB%8A%A5-%EC%82%AC%EC%9A%A9
@@ -132,7 +132,8 @@ U wnat to re-create? (y/N) " _ANSWER
             fi
 
             if [ ! -f ${ELK_PATH}/${_SVC} ]; then
-                run_cmd "ln -s ${ELK_PATH}/${_SVC}-${ELK_VER} ${_SVC}"
+                run_cmd "cd ${ELK_PATH}"
+                run_cmd "ln -s ./${_SVC}-${ELK_VER} ${_SVC}"
             else
                 log_msg "WARR" "Already ${ELK_PATH}/${_SVC}, so Change new [ ${_SVC}-${ELK_VER} ]"
                 run_cmd "ln -Tfs ${ELK_PATH}/${_SVC}-${ELK_VER} ${_SVC}"
@@ -274,6 +275,8 @@ U wnat to re-create? (y/N) " _ANSWER
 
     case ${_SVC} in
         elasticserach )
+            run_cmd "mkdir ${ELK_PATH}/elasticsearch/data"
+            run_cmd "mkdir ${ELK_PATH}/elasticsearch/data"
             run_cmd "cat <<EOF >${ELK_PATH}/elasticsearch/config/elasticsearch.yml
 cluster.name: ${ELK_SVR}
 node.name: ${ELK_SVR}
@@ -397,7 +400,8 @@ U wnat to re-create? (y/N) " _ANSWER
         run_cmd "rm -f /usr/lib/systemd/system/${_SVC}.service"
     fi
 
-    run_cmd "cp -rfp ./${_SVC}.service.sample ./${_SVC}.service"
+    sleep 1
+    run_cmd "cp -fp ./${_SVC}.service.sample ./${_SVC}.service"
     run_cmd "sed -i \"s~ELK_PATH~${ELK_PATH}~g\" ./${_SVC}.service"
     run_cmd "sed -i \"s~ELK_USER~${ELK_USER}~g\" ./${_SVC}.service"
     run_cmd "cp -rfp ./${_SVC}.service /usr/lib/systemd/system/${_SVC}.service"
@@ -424,9 +428,14 @@ U wnat to re-create? (y/N) " _ANSWER
         run_cmd "rm -f ${ELK_PATH}/elasticsearch/config/elk_pass.temp"
     fi
 
+    run_cmd "chown -R ${ELK_USER}.${ELK_USER} ${ELK_PATH}"
+    run_cmd "systemctl start elasticsearch"
     run_cmd "su - ${ELK_USER} -c 'yes| ${ELK_PATH}/elasticsearch/bin/elasticsearch-setup-passwords auto -u \"https://${ELK_URL}:9200\" >${ELK_PATH}/elasticsearch/config/elk_pass.temp'"
     if [ $? -eq 0 ]; then
         log_msg "INO" "Sucess elk password."
+    elif [ $(echo $?) -eq 78 ]; then
+        log_msg "ERROR"  "keystore file is missing [ ${ELK_PATH}/elasticsearch/config/elasticsearch.keystore ]"
+        exit 1
     else
         log_msg "ERROR" "Fail auto password. Because Already been excuted once 'elasticsearch-auto-passwords auto'.\nPlease using elasticsearch-reset-password' or Delete Elasticsearch data."
         exit 1
