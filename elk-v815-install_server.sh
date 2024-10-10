@@ -301,6 +301,7 @@ EOF"
 server.name: ${ELK_SVR}
 server.host: 0.0.0.0
 server.port: 5601
+server.publicBaseUrl: \"https://${ELK_URL}:5601\"
 
 path.data: ${ELK_PATH}/kibana/data
 pid.file: ${ELK_PATH}/kibana/data/kibana.pid
@@ -323,13 +324,13 @@ elasticsearch.ssl.certificateAuthorities: ${ELK_PATH}/kibana/config/certs/ca/ca.
 EOF"
     ;;
 
-        logstash )
-            ELASTIC_PASSWORD=$(awk -F'=' '/elastic =/ {print $2}' ${ELK_PATH}/elasticsearch/config/${ELK_SVR}_pass.temp |tr -d ' ')
-            if [ ! -d ${ELK_PATH}/logstash/conf.d ]; then
-                run_cmd "mkdir ${ELK_PATH}/logstash/conf.d"
-            fi
-            
-            run_cmd "cat <<EOF >${ELK_PATH}/logstash/config/logstash.yml
+    logstash )
+        ELASTIC_PASSWORD=$(awk -F'=' '/elastic =/ {print $2}' ${ELK_PATH}/elasticsearch/config/${ELK_SVR}_pass.temp |tr -d ' ')
+        if [ ! -d ${ELK_PATH}/logstash/conf.d ]; then
+            run_cmd "mkdir ${ELK_PATH}/logstash/conf.d"
+        fi
+        
+        run_cmd "cat <<EOF >${ELK_PATH}/logstash/config/logstash.yml
 node.name: ${ELK_SVR}
 path.config: ${ELK_PATH}/logstash/conf.d/*.conf
 path.data: ${ELK_PATH}/logstash/data
@@ -338,7 +339,7 @@ path.logs: ${ELK_PATH}/logstash/logs
 xpack.monitoring.enabled: true
 xpack.monitoring.elasticsearch.username: elastic
 xpack.monitoring.elasticsearch.password: ${ELASTIC_PASSWORD}
-xpack.monitoring.elasticsearch.hosts: https://${SVC_NAME}:9200
+xpack.monitoring.elasticsearch.hosts: https://${ELK_URL}:9200
 
 xpack.monitoring.elasticsearch.ssl.certificate_authority: ${ELK_PATH}/logstash/config/certs/ca/ca.crt
 xpack.monitoring.elasticsearch.ssl.verification_mode: certificate
@@ -346,8 +347,8 @@ xpack.monitoring.elasticsearch.sniffing: false
 xpack.monitoring.collection.interval: 10s
 xpack.monitoring.collection.pipeline.details.enabled: true
 EOF"
-           if [ ! -f ${ELK_PATH}/logstash/conf.d/basic-logstash.conf ]; then
-                run_cmd "cat <<EOF >${ELK_PATH}/logstash/conf.d/basic-logstash.conf
+        if [ ! -f ${ELK_PATH}/logstash/conf.d/basic-logstash.conf ]; then
+            run_cmd "cat <<EOF >${ELK_PATH}/logstash/conf.d/basic-logstash.conf
 input {
     file {
         path            => \"/var/log/secure\"
@@ -358,7 +359,7 @@ input {
 output {
     elasticsearch {
         index       => \"logstash-%{+YYYY.MM.dd}\"
-        hosts       => https://${SVC_NAME}:9200
+        hosts       => \"https://${ELK_URL}:9200\"
         ssl         => true
         cacert      => \"${ELK_PATH}/logstash/config/certs/ca/ca.crt\"
         user        => \"elastic\"
@@ -366,6 +367,7 @@ output {
     }
 }
 EOF"
+        fi
     ;;
     esac
 }
@@ -400,8 +402,6 @@ U wnat to re-create? (y/N) " _ANSWER
     run_cmd "sed -i \"s~ELK_USER~${ELK_USER}~g\" ./${_SVC}.service"
     run_cmd "cp -rfp ./${_SVC}.service /usr/lib/systemd/system/${_SVC}.service"
     run_cmd "systemctl daemon-reload"
-
-    run_cmd "chown -R ${ELK_USER}.${ELK_USER} ${ELK_PATH}"
 }
 
 function setup_password() {
@@ -444,16 +444,17 @@ main() {
         case ${MODE} in
             "install" )
                 setup_dir
-                # download_pkgs
-                # setup_ssl_root
-                # setup_ssl_instance
-                # setup_config "elasticsearch"
-                # setup_service "elasticsearch"
-                # setup_password
-                # setup_config "kibana"
-                # setup_service "kibana"
+                download_pkgs
+                setup_ssl_root
+                setup_ssl_instance
+                setup_config "elasticsearch"
+                setup_service "elasticsearch"
+                setup_password
+                setup_config "kibana"
+                setup_service "kibana"
                 setup_config "logstash"
                 setup_service "logstash"
+                run_cmd "chown -R ${ELK_USER}.${ELK_USER} ${ELK_PATH}"
             ;;
             "remove"  ) echo "remote"  ; exit 0 ;;
             *         ) help_usage     ; exit 0 ;;
