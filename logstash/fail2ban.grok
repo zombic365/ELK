@@ -1,0 +1,9 @@
+# 참고문헌
+# https://discuss.elastic.co/t/grok-parse-failure-with-fail2ban/77492/4
+# https://gist.github.com/alexalouit/40d4b5b8f5c62bda6dad
+
+LOG_TIME %{YEAR}-%{MONTHNUM}-%{MONTHDAY}[T ]%{HOUR}:?%{MINUTE}(?::?%{SECOND})
+FAIL2BAN_FORM %{LOG_TIME:timestamp} %{JAVACLASS:criteria}.*? \[%{NUMBER:pid}\]:.*? %{LOGLEVEL:level}.*? \[%{NOTSPACE:service}\]
+FAIL2BAN_BAN %{FAIL2BAN_FORM} Ban %{IPV4:clientip}
+FAIL2BAN_UNBAN %{FAIL2BAN_FORM} Unban %{IPV4:clientip}
+FAIL2BAN_ALREADY_BAN %{FAIL2BAN_FORM} %{IPV4:clientip} already banned

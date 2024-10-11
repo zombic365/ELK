@@ -9,6 +9,13 @@
 # https://velog.io/@91savage/ELK-Stack-Elasticsearch-Logstash-Kibana-debian-%EC%84%A4%EC%B9%98
 # https://ploz.tistory.com/entry/logstash-elasticsearch-cluster%EC%97%90-logstash-%EB%B6%99%EC%97%AC%EB%B3%B4%EA%B8%B0SSL-%ED%8F%AC%ED%95%A8
 
+#!/bin/bash
+Color_Off="\033[0m"
+Red="\033[0;31m"
+Green="\033[0;32m"
+Yellow="\033[0;33m"
+Cyan="\033[0;36m"
+
 function run_cmd() {
     _CMD=$@
     log_msg "CMD" "$@"    
@@ -31,21 +38,14 @@ function log_msg() {
     _LOG_TYPE=$1
     _LOG_MSG=$2
 
-    # printf "%-*s | %s\n" ${STR_LEGNTH} "Server Serial" "Unknown" |tee -a ${LOG_FILE} >/dev/null
     case ${_LOG_TYPE} in
-        "CMD"   ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
-        "OK"    ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "command ok."   ;;
-        "FAIL"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "command fail." ;;
-        "INFO"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
-        "WARR"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
-        "SKIP"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
-        "ERROR" ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 4 "${_LOG_TYPE}" "${_LOG_MSG}"   ;;
-        # "CMD"   ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "${_LOG_MSG}"   |tee -a ${LOG_FILE} >/dev/null ;;
-        # "OK"    ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "command ok."   |tee -a ${LOG_FILE} >/dev/null ;;
-        # "FAIL"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "command fail." |tee -a ${LOG_FILE} >/dev/null ;;
-        # "INFO"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "${_LOG_MSG}"   |tee -a ${LOG_FILE} >/dev/null ;;
-        # "WARR"  ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "${_LOG_MSG}"   |tee -a ${LOG_FILE} >/dev/null ;;
-        # "ERROR" ) printf "%s | %-*s | %s\n" "${_LOG_TIME}" 7 "${_LOG_TYPE}" "${_LOG_MSG}"   |tee -a ${LOG_FILE} >/dev/null ;;
+        "CMD"   ) printf "%s | %-*s | %s\n" "[${_LOG_TIME}]" 3 "${_LOG_TYPE}" "${_LOG_MSG}" ;;
+        "OK"    ) printf "%s | ${Green}%-*s${Color_Off} | %s\n" "[${_LOG_TIME}]" 3 "${_LOG_TYPE}" "+- command ok." ;;
+        "FAIL"  ) printf "%s | ${Red}%-*s${Color_Off} | %s\n" "[${_LOG_TIME}]" 3 "${_LOG_TYPE}" "+- command fail." ;;
+        "INFO"  ) printf "%s | %-*s | %s\n" "[${_LOG_TIME}]" 3 "${_LOG_TYPE}" "${_LOG_MSG}" ;;
+        "WARR"  ) printf "%s | ${Yellow}%-*s${Color_Off} | %s\n" "[${_LOG_TIME}]" 3 "${_LOG_TYPE}" "${_LOG_MSG}" ;;
+        "SKIP"  ) printf "%s | ${Cyan}%-*s${Color_Off} | %s\n" "[${_LOG_TIME}]" 3 "${_LOG_TYPE}" "${_LOG_MSG}" ;;
+        "ERROR" ) printf "%s | ${Red}%-*s${Color_Off} | %s\n" "[${_LOG_TIME}]" 3 "${_LOG_TYPE}" "${_LOG_MSG}" ;;
     esac
 }
 
@@ -274,8 +274,7 @@ U wnat to re-create? (y/N) " _ANSWER
     run_cmd "cp ${ELK_PATH}/${_SVC}/config/${_SVC}.yml ${ELK_PATH}/${_SVC}/config/${_SVC}.yml.org"
 
     case ${_SVC} in
-        elasticserach )
-            run_cmd "mkdir ${ELK_PATH}/elasticsearch/data"
+        elasticsearch )
             run_cmd "mkdir ${ELK_PATH}/elasticsearch/data"
             run_cmd "cat <<EOF >${ELK_PATH}/elasticsearch/config/elasticsearch.yml
 cluster.name: ${ELK_SVR}
@@ -378,6 +377,7 @@ EOF"
 function setup_service() {
     _RE="false"
     _SVC=$1
+    
     if [ -z ${_SVC} ]; then
         log_msg "ERROR" "no arguments [set_config]."
         exit 1
@@ -400,11 +400,12 @@ U wnat to re-create? (y/N) " _ANSWER
         run_cmd "rm -f /usr/lib/systemd/system/${_SVC}.service"
     fi
 
-    sleep 1
+    _SCRIPT_DIR=$(dirname ${SCRIPT_PATH})
+    run_cmd "cd ${_SCRIPT_DIR}"
     run_cmd "cp -fp ./${_SVC}.service.sample ./${_SVC}.service"
     run_cmd "sed -i \"s~ELK_PATH~${ELK_PATH}~g\" ./${_SVC}.service"
     run_cmd "sed -i \"s~ELK_USER~${ELK_USER}~g\" ./${_SVC}.service"
-    run_cmd "cp -rfp ./${_SVC}.service /usr/lib/systemd/system/${_SVC}.service"
+    run_cmd "cp -fp ./${_SVC}.service /usr/lib/systemd/system/${_SVC}.service"
     run_cmd "systemctl daemon-reload"
 }
 
@@ -430,6 +431,12 @@ U wnat to re-create? (y/N) " _ANSWER
 
     run_cmd "chown -R ${ELK_USER}.${ELK_USER} ${ELK_PATH}"
     run_cmd "systemctl start elasticsearch"
+    while true; do
+        if netstat -anp |grep -q 9200; then
+            break
+        fi
+    done
+
     run_cmd "su - ${ELK_USER} -c 'yes| ${ELK_PATH}/elasticsearch/bin/elasticsearch-setup-passwords auto -u \"https://${ELK_URL}:9200\" >${ELK_PATH}/elasticsearch/config/elk_pass.temp'"
     if [ $? -eq 0 ]; then
         log_msg "INO" "Sucess elk password."
@@ -442,7 +449,40 @@ U wnat to re-create? (y/N) " _ANSWER
     fi
 }
 
+function remove_service() {
+    _SVC=$1
+    
+    if [[ -z ${_SVC} ]] || [[ -z ${ELK_PATH} ]]; then
+        log_msg "ERROR" "no arguments [set_config]."
+        exit 1
+    fi
+
+    if ps -ef |grep ${_SVC} |grep -qv "grep"; then
+        run_cmd "systemctl stop ${_SVC}"
+    fi
+
+    while true; do
+        if ps -ef |grep ${_SVC} |grep -qv "grep"; then
+            continue
+        else
+            break
+        fi
+    done
+
+    if [ -f /usr/lib/systemd/system/${_SVC}.service ]; then
+        run_cmd "rm -f /usr/lib/systemd/system/${_SVC}.service"
+    fi
+
+    run_cmd "systemctl daemon-reload"
+    if [ ${_SVC} == "elasticsearch" ]; then
+        run_cmd "rm -rf /tmp/elasticsearch-*"
+    fi
+    run_cmd "rm -rf ${ELK_PATH}/${_SVC}"
+}
+
 main() {
+    SCRIPT_PATH=$(readlink -f $0)
+
     [ $# -eq 0 ] && help_usage
     set_opts "$@"
 
@@ -465,7 +505,12 @@ main() {
                 setup_service "logstash"
                 run_cmd "chown -R ${ELK_USER}.${ELK_USER} ${ELK_PATH}"
             ;;
-            "remove"  ) echo "remote"  ; exit 0 ;;
+            "remove"  )
+                remove_service "kibana"
+                remove_service "logstash"
+                remove_service "elasticsearch"
+                run_cmd "rm -rf ${ELK_PATH}"
+            ;;
             *         ) help_usage     ; exit 0 ;;
         esac
     fi
