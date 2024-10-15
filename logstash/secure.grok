@@ -1,5 +1,5 @@
 # 참고문헌
 # https://github.com/nxhack/logstash/blob/master/patterns/sshd
 
-SSH_FAIL_USER %{SYSLOGBASE} Failed password for invalid user %{USERNAME:username} from %{IPORHOST:remote} port %{BASE10NUM:port:int} %{WORD:protocol}
-SSH_FAIL_PASS %{SYSLOGBASE} Failed password for %{USERNAME:username} from %{IPORHOST:remote} port %{BASE10NUM:port:int} %{WORD:protocol}
+SSH_FAIL_USER %{SYSLOGBASE} Failed password for invalid user %{USERNAME:remote_user} from %{IPORHOST:remote_ip} port %{BASE10NUM:remote_port:int} %{WORD:remote_protocol}
+SSH_FAIL_PASS %{SYSLOGBASE} Failed password for %{USERNAME:remote_user} from %{IPORHOST:remote_ip} port %{BASE10NUM:remote_port:int} %{WORD:remote_protocol}
